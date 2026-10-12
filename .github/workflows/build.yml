@@ -1,0 +1,17 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t mysite .
+      - name: Start a container
+        run: docker run -d -p 8080:80 --name web mysite
+      - name: Test the page
+        run: sleep 2 && curl --fail http://localhost:8080 | grep "My first site"
