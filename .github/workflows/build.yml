@@ -1,4 +1,4 @@
-name: Build and test
+name: Build, test and deploy
 
 on:
   push:
@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
+
+env:
+  IMAGE: asia-south1-docker.pkg.dev/bhagya-devops-2026/website/mysite
 
 jobs:
   build:
@@ -19,9 +23,27 @@ jobs:
         run: docker run -d -p 8080:80 --name web mysite
       - name: Test the page
         run: sleep 2 && curl --fail http://localhost:8080 | grep "My first site"
-      - name: Log in to the registry
+      - name: Log in to the GitHub registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-      - name: Push the image
+      - name: Push to the GitHub registry
         run: |
           docker tag mysite ghcr.io/bhagyashrij2206/mysite:latest
           docker push ghcr.io/bhagyashrij2206/mysite:latest
+      - name: Log in to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/899323840934/locations/global/workloadIdentityPools/github/providers/website
+          service_account: github-deployer@bhagya-devops-2026.iam.gserviceaccount.com
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Push to Artifact Registry
+        run: |
+          gcloud auth configure-docker asia-south1-docker.pkg.dev --quiet
+          docker tag mysite $IMAGE:${{ github.sha }}
+          docker push $IMAGE:${{ github.sha }}
+      - name: Deploy to Cloud Run
+        run: gcloud run deploy mysite --image $IMAGE:${{ github.sha }} --region asia-south1 --port 80 --quiet
+      - name: Check the live site
+        run: |
+          URL=$(gcloud run services describe mysite --region asia-south1 --format='value(status.url)')
+          curl --fail $URL | grep "My first site"
